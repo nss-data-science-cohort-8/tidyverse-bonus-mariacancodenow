@@ -1,0 +1,230 @@
+---
+title: "Tidyverse Bonus - TN Schools Data"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+```
+
+1. Read in districts.csv into a tibble named districts.
+
+```{r}
+districts <- read.csv('../data/districts.csv')
+```
+
+2. Notice that the first row corresponds to the whole State of Tennessee. Remove this row and save the result back to districts.
+
+```{r}
+districts <- districts |> 
+  filter(!row_number() %in% 1)
+```
+
+3. How many districts have a proficiency rate of at least 80% for both alg_1 and eng_1?
+
+```{r}
+prof_eighty_count <- districts |> 
+  select(alg_1, eng_1)|> 
+  filter(alg_1 >= 80, eng_1 >= 80)|> 
+  count()
+
+sprintf('%s districts have a proficiency rate of at least 80 percent for both alg_1 and eng_1.', prof_eighty_count)
+```
+
+4. How many districts have a proviciency rate less than 50% for either alg_1 or eng_1?
+
+```{r}
+prof_fifty_count <- districts |> 
+  select(alg_1, eng_1)|> 
+  filter(alg_1 < 50, eng_1 < 50)|> 
+  count()
+
+sprintf('%s districts have a proficiency rate of less than 50 percent for both alg_1 and eng_1.', prof_fifty_count)
+```
+
+5. Which district has the lowest graduation rate?
+
+```{r}
+districts |> 
+  select(system_name, grad) |> 
+  slice_min(grad)
+```
+
+6. Within the Mid Cumberland region, which district has the highest ACT composite?
+
+```{r}
+districts |> 
+  filter(region == "Mid Cumberland") |> 
+  select(system_name, act_composite)|> 
+  slice_max(act_composite)
+```
+
+7. Create a scatter plot to compare alg_1 proficiency rates to alg_2 rates. What do you notice? Facet this plot by region. Does anything stand out when you facet the plots?
+
+```{r}
+ggplot(districts, aes(x=alg_1, y=alg_2)) +
+  geom_point()
+```
+
+The plot suggests that there is a positive correlation between alg_1 and alg_2 proficiency rates, meaning that districts with higher proficiency rates in alg_1 tend to also have higher proficiency rates in alg_2 (and vice-versa).
+
+```{r}
+ggplot(districts, aes(x=alg_1, y=alg_2)) +
+  geom_point() +
+  facet_wrap(~region)
+```
+
+After faceting the plots, there's a lot less data per plot (obviously), and there's also a lot less of an obvious trend in any of them. Some still show a positive correlation, but others have a lot of variability and seem to have little obvious correlation.
+
+8. When creating this bar chart you may have noticed that some districts have missing enrollment values. For how many districts is this the case?
+(Assuming we first have to create a bar chart of enrollment values per district!)
+
+```{r}
+ggplot(districts, aes(x=system_name, y=enrollment)) +
+  geom_col()
+```
+
+According to ggplot, there are 4 missing values, but will also do coding to confirm :)
+
+```{r}
+sum(is.na(districts$enrollment))
+```
+
+9. A lot of rows are missing additional values. Which district has the largest number of missing values (across all variables)? Hint: you might want to look at rowwise and c_across to answer this question.
+
+```{r}
+districts |>  
+  rowwise() |> 
+  mutate(num_NAs = sum(is.na(across(everything())))) |>
+  arrange(desc(num_NAs))
+```
+
+10. What is the mean graduation rate across all districts? What might be wrong with using just the regular mean to assess average graduation rates?
+
+```{r}
+districts |> 
+  summarise(mean_grad_rate = mean(grad, na.rm =TRUE))
+```
+
+The mean graduation rate across all districts is 90.07%; using an unweighted mean may be problematic as it does not factor in enrollment numbers (so a district with 10 enrolled students will be treated the same as one with 1000), which can give an inaccurate picture.
+
+11. Redo the previous question but use a weighted average (weighted.mean) graduation across all districts, weighing by enrollment. How much does this change your answer? Can you explain using the data the reason for the big change from using the mean?
+
+```{r}
+districts |> 
+  drop_na(enrollment, grad) |> 
+  summarise(wt_mean_grad_rate = weighted.mean(grad, enrollment))
+```
+
+```{r}
+grad_desc <-districts |> 
+  drop_na(grad, enrollment) |> 
+  select(system_name, enrollment, grad) |> 
+  arrange(desc(grad))
+```
+
+```{r}
+slice_head(grad_desc, n=5)
+slice_tail(grad_desc, n=5)
+```
+
+```{r}
+ggplot(districts, aes(x=enrollment, y=grad)) +
+  geom_point() +
+  coord_cartesian(xlim = c(0, 30000))
+```
+
+
+Using a weighted mean results in a drop of about 3%; looking at the data more closely, it appears that schools with the highest graduation rates tend to be smaller, and those with the lowest tend to be larger, which, when accounted for, drag down the mean.
+
+12. Find the unweighted and weighted average graduation rate by district.
+
+```{r}
+districts |> 
+  group_by(region)|> 
+  summarise(mean_grad_rate = mean(grad, na.rm =TRUE))
+```
+
+```{r}
+districts |> 
+  drop_na(grad, enrollment) |> 
+  group_by(region)|> 
+  summarise(wt_mean_grad_rate = weighted.mean(grad, enrollment))
+```
+
+13. Read in the school-level testing data for 2014. You might find the readxl library useful for this task. If you use this library, be sure to look at the na argument for the read_excel function.
+
+```{r}
+library(readxl)
+```
+
+
+```{r}
+school_test <- read_excel('../data/data_2014_school_base.xlsx', na = c('*', '**'))
+```
+
+To answer the following questions, use "All Students" for the subgroup.
+
+```{r}
+all_students <- school_test |> 
+  filter(subgroup == "All Students")
+```
+
+
+14. How many schools have at least 20 percent of students below bsc for Algebra I? Which districts do these schools belong to?
+
+```{r}
+all_students |> 
+  filter(grade == "All Grades", subject == "Algebra I", pct_below_bsc >= 20) |> 
+  #group_by(system_name) |> 
+  count()
+```
+
+15. How many schools have at least 20 percent of students below bsc for both Algebra I and English I?
+
+```{r}
+all_students |> 
+  filter(grade == "All Grades", subject %in% c('Algebra I','English I'), pct_below_bsc >= 20)|> 
+  group_by(system_name, school_name) |> 
+  filter(n()>1)
+```
+
+16. Which grade has the highest pct_adv for Algebra I? Plot the average pct_adv per grade level as a bar chart. Make sure that the bars are ordered by grade level.
+
+```{r}
+alg_grades <- all_students |> 
+  filter(!(grade == "All Grades"), subject == "Algebra I") |> 
+  drop_na(pct_adv) |>
+  group_by(grade) |>
+  summarise(avg_pct_adv = mean(pct_adv)) |> 
+  arrange(as.numeric(grade)) |> 
+  mutate(grade=factor(grade, levels=grade))
+  #arrange(desc(avg_pct_adv))
+```
+
+```{r}
+ggplot(alg_grades, aes(x=grade, y=avg_pct_adv)) +
+  geom_col()
+```
+
+17. Find the correlation between pct_adv for Algebra I and pct_adv for Algebra II by school. Create a scatterplot showing Algebra II scores vs. Algebra I scores by school.
+
+```{r}
+alg_one_two <- all_students |> 
+  filter(grade == "All Grades", subject %in% c('Algebra I','Algebra II')) |> 
+  select(system_name, school_name, subject, pct_adv) |>
+  pivot_wider(id_cols = c(system_name, school_name), names_from = subject, values_from = pct_adv) |> 
+  drop_na() |> 
+  rename(algebra1 = `Algebra I`, algebra2 = `Algebra II`)
+```
+
+```{r}
+alg_one_two |>
+  summarise(cor=cor(algebra1, algebra2))
+```
+
+```{r}
+ggplot(alg_one_two, aes(x=algebra1, y=algebra2)) +
+  geom_point()
+```
+
